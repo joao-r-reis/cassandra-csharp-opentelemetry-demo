@@ -23,10 +23,12 @@ namespace Client
                 .AddSource(ClientActivity.Name)
                 .AddOtlpExporter(opt => opt.Endpoint = new Uri(OtlpExporterUri))
                 .Build();
+            Trace.AutoFlush = true;
+            Trace.Listeners.Add(new ConsoleTraceListener());
             var cts = new CancellationTokenSource();
             var task = Task.Run(async () =>
             {
-                await Task.Delay(1000, cts.Token).ConfigureAwait(false);
+                await Task.Delay(5000, cts.Token).ConfigureAwait(false);
                 using var httpClient = new HttpClient();
                 while (!cts.IsCancellationRequested)
                 {
@@ -34,13 +36,19 @@ namespace Client
                     {
                         using (var _ = ClientActivity.StartActivity(ActivityKind.Client))
                         {
-                            await Console.Out.WriteLineAsync("TraceId: " + Activity.Current?.TraceId + Environment.NewLine + "Sending request.").ConfigureAwait(false);
-                            var forecastResponse = await httpClient.GetAsync(WeatherForecastEndpointUri, cts.Token).ConfigureAwait(false);
+                            await Console.Out
+                                .WriteLineAsync("TraceId: " + Activity.Current?.TraceId + Environment.NewLine +
+                                                "Sending request.").ConfigureAwait(false);
+                            var forecastResponse = await httpClient.GetAsync(WeatherForecastEndpointUri, cts.Token)
+                                .ConfigureAwait(false);
 
                             if (forecastResponse.IsSuccessStatusCode)
                             {
-                                var content = await forecastResponse.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
-                                await Console.Out.WriteLineAsync("TraceId: " + Activity.Current?.TraceId + Environment.NewLine + content + Environment.NewLine).ConfigureAwait(false);
+                                var content = await forecastResponse.Content.ReadAsStringAsync(cts.Token)
+                                    .ConfigureAwait(false);
+                                await Console.Out
+                                    .WriteLineAsync("TraceId: " + Activity.Current?.TraceId + Environment.NewLine +
+                                                    content + Environment.NewLine).ConfigureAwait(false);
                             }
                         }
 
@@ -48,6 +56,10 @@ namespace Client
                     }
                     catch (TaskCanceledException)
                     {
+                    }
+                    catch (Exception ex)
+                    {
+                        await Console.Error.WriteLineAsync(ex.ToString()).ConfigureAwait(false);
                     }
                 }
             });

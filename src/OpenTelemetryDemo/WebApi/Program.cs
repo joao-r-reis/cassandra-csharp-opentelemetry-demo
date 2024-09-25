@@ -6,6 +6,7 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Extensions.Logging;
+using WebApi.Controllers;
 using ISession = Cassandra.ISession;
 
 namespace WebApi
@@ -13,7 +14,6 @@ namespace WebApi
     // This API creates a keyspace "weather" and table "weather_forecast" on startup (if they don't exist).
     public class Program
     {
-        private const string OtlpExporterUri = "http://localhost:4317";
         //private const string CassandraContactPoint = "127.0.0.1";
         //private const int CassandraPort = 9042;
 
@@ -25,6 +25,7 @@ namespace WebApi
                 .CreateLogger();
 
             var builder = WebApplication.CreateBuilder(args);
+            builder.Configuration.AddJsonFile("appsettings-local.json");
 
             // Add services to the container.
 
@@ -33,7 +34,8 @@ namespace WebApi
                 .WithTracing(tracing => tracing
                     .AddAspNetCoreInstrumentation()
                     .AddSource(CassandraActivitySourceHelper.ActivitySourceName)
-                    .AddOtlpExporter(opt => opt.Endpoint = new Uri(OtlpExporterUri)));
+                    .AddSource(WeatherForecastController.ActivitySource.Name)
+                    .AddOtlpExporter(opt => opt.Endpoint = new Uri(builder.Configuration["OpenTelemetry:ExporterUri"]!)));
             builder.Services.AddLogging(b => b.AddSerilog());
             builder.Services.AddSingleton<ICluster>(services =>
             {
@@ -42,16 +44,16 @@ namespace WebApi
                 var cassandraBuilder = Cluster.Builder()
                     //.AddContactPoint(CassandraContactPoint)
                     //.WithPort(CassandraPort)
-                    .WithCloudSecureConnectionBundle(@"")
-                    .WithCredentials("token", @"")
+                    .WithCloudSecureConnectionBundle(builder.Configuration["Astra:Bundle"])
+                    .WithCredentials("token", builder.Configuration["Astra:Token"])
                     .WithOpenTelemetryInstrumentation(opts => opts.IncludeDatabaseStatement = true)
                     .WithExecutionProfiles(opt => opt
                         .WithProfile("default", profile => profile
                             .WithRetryPolicy(new IdempotenceAwareRetryPolicy(new LoggingRetryPolicy(new DefaultRetryPolicy())))
-                            .WithSpeculativeExecutionPolicy(new ConstantSpeculativeExecutionPolicy(20, 5))
+                            .WithSpeculativeExecutionPolicy(new ConstantSpeculativeExecutionPolicy(50, 1))
                             .WithReadTimeoutMillis(10000))
                         .WithProfile("short", profile => profile
-                            .WithReadTimeoutMillis(50)))
+                            .WithReadTimeoutMillis(50).WithSpeculativeExecutionPolicy(NoSpeculativeExecutionPolicy.Instance)))
                     .WithQueryOptions(new QueryOptions().SetDefaultIdempotence(true));
                 return cassandraBuilder.Build();
             });

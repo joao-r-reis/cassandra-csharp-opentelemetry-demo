@@ -396,3 +396,6 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+src/OpenTelemetryDemo/WebApi/appsettings-local.json
+tempo-data
